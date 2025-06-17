@@ -27,6 +27,7 @@
     "author": "",
     "license": "ISC",
     "scripts": {
+        "start": "node index_teramind.js",
         "start:dev": "node index.js"
     }
 }
