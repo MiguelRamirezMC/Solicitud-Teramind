@@ -22,7 +22,7 @@
     "name": "backend-solicitud-de-empleo",
     "version": "1.0.0",
     "description": "",
-    "main": "index.js",
+    "main": "index_teramind.js",
     "keywords": [],
     "author": "",
     "license": "ISC",
