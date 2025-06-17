@@ -112,7 +112,7 @@ api.post("/prospecto", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
+// Something 
 // DELETE a record by type and id
 api.delete("/:recordtype/:id", async (req, res) => {
   try {
