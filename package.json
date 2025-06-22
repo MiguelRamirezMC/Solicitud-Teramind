@@ -22,12 +22,12 @@
     "name": "backend-solicitud-de-empleo",
     "version": "1.0.0",
     "description": "",
-    "main": "index_teramind.js",
+    "main": "index.js",
     "keywords": [],
     "author": "",
     "license": "ISC",
     "scripts": {
-        "start": "node index_teramind.js",
+        "start": "node index.js",
         "start:dev": "node index.js"
     }
 }
