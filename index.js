@@ -1,82 +1,136 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const NetSuiteOauth = require("netsuite-tba-oauth");
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const NetSuiteOauth = require('netsuite-tba-oauth');
+
+// Validar variables de entorno
+const requiredVars = [
+  'ACCOUNT',
+  'SCRIPT',
+  'DEPLOY',
+  'CONSUMERKEY',
+  'CONSUMER_SECRET',
+  'TOKEN_ID',
+  'TOKEN_SECRET'
+];
+const missing = requiredVars.filter(v => !process.env[v]);
+if (missing.length) {
+  console.error('🚨 Faltan variables de entorno:', missing.join(', '));
+  process.exit(1);
+}
+
+// Desestructurar variables
+const {
+  ACCOUNT,
+  SCRIPT,
+  DEPLOY,
+  CONSUMERKEY,
+  CONSUMER_SECRET,
+  TOKEN_ID,
+  TOKEN_SECRET,
+  PORT = 3000
+} = process.env;
+
+const BASE_URL = `https://${ACCOUNT}.restlets.api.netsuite.com/app/site/hosting/restlet.nl`;
+
+// Helper para instanciar OAuth
+function createOAuth(url, method) {
+  return new NetSuiteOauth(
+    url,
+    method,
+    CONSUMERKEY,
+    CONSUMER_SECRET,
+    TOKEN_ID,
+    TOKEN_SECRET,
+    ACCOUNT
+  );
+}
+
+// Middleware genérico para manejo de errores
+function wrapAsync(fn) {
+  return async (req, res) => {
+    try {
+      await fn(req, res);
+    } catch (e) {
+      console.error(`🔥 Error en ${req.method} ${req.originalUrl}:`, e.stack || e);
+      res.status(500).json({ error: 'Error interno, revisa los logs' });
+    }
+  };
+}
 
 const app = express();
-app.set('trust proxy', true);
-
-// === CORS GLOBAL ===
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
-}));
-app.options('*', cors());
-
 app.use(express.json());
+app.use(cors({ origin: true }));
 
-app.use((req, res, next) => {
-  console.log(`[${req.method}] ${req.originalUrl}`);
-  next();
-});
+// Ruta de salud
+app.get('/', (req, res) => res.json({ status: 'ok' }));
 
-app.get('/', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// Rutas de API
+const api = express.Router();
 
-const router = express.Router();
-const BASE_URL = `https://${process.env.ACCOUNT}.restlets.api.netsuite.com/app/site/hosting/restlet.nl`;
-const { SCRIPT_ID, DEPLOY_ID, CONSUMERKEY, CONSUMER_SECRET, TOKEN_ID, TOKEN_SECRET, ACCOUNT } = process.env;
-
-function buildOauth(method, extraParams = '') {
-  const url = `${BASE_URL}?script=${SCRIPT_ID}&deploy=${DEPLOY_ID}${extraParams}`;
-  return new NetSuiteOauth(url, method, CONSUMERKEY, CONSUMER_SECRET, TOKEN_ID, TOKEN_SECRET, ACCOUNT);
-}
-
-router.get('/getData', async (req, res) => {
-  try {
-    const lists = ['territorios', 'enfoques', 'industrias'];
-    const result = {};
-    for (const list of lists) {
-      const oauth = buildOauth('GET', `&list=${list}`);
-      const raw = await oauth.get();
-      result[list] = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    }
-    res.json(result);
-  } catch (err) {
-    console.error('GET /getData error:', err);
-    res.status(500).json({ error: 'Ocurrió un error al obtener los datos.' });
+api.get('/getData', wrapAsync(async (req, res) => {
+  const lists = ['territorios', 'enfoques', 'industrias'];
+  const result = {};
+  for (const name of lists) {
+    const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}&list=${name}`;
+    const oauth = createOAuth(url, 'GET');
+    const raw = await oauth.get();
+    result[name] = typeof raw === 'string' ? JSON.parse(raw) : raw;
   }
-});
+  res.json(result);
+}));
 
-async function handleCreateProspect(req, res) {
-  try {
-    const oauth = buildOauth('POST');
-    const raw = await oauth.post(req.body || {});
-    const response = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    res.json(response);
-  } catch (e) {
-    console.error(`POST ${req.originalUrl} error:`, e);
-    res.status(500).json({ error: 'No se pudo crear el prospecto.' });
-  }
-}
+api.get('/listas/:listName', wrapAsync(async (req, res) => {
+  const { listName } = req.params;
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}&list=${listName}`;
+  const oauth = createOAuth(url, 'GET');
+  const raw = await oauth.get();
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
 
-router.post('/send', handleCreateProspect);
-router.post('/prospecto', handleCreateProspect);
+api.get('/:recordtype/:id', wrapAsync(async (req, res) => {
+  const { recordtype, id } = req.params;
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}&recordtype=${recordtype}&id=${id}`;
+  const oauth = createOAuth(url, 'GET');
+  const raw = await oauth.get();
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
 
-app.use('/api/v2/se', router);
+api.post('/send', wrapAsync(async (req, res) => {
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}`;
+  const oauth = createOAuth(url, 'POST');
+  const raw = await oauth.post(req.body);
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
 
-app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
-});
+api.post('/prospecto', wrapAsync(async (req, res) => {
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}`;
+  const oauth = createOAuth(url, 'POST');
+  const raw = await oauth.post(req.body);
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
 
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.set('Access-Control-Allow-Origin', '*');
-  res.status(500).json({ error: err.message || 'Error interno del servidor' });
-});
+api.delete('/:recordtype/:id', wrapAsync(async (req, res) => {
+  const { recordtype, id } = req.params;
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}&delete=1&recordtype=${recordtype}&id=${id}`;
+  const oauth = createOAuth(url, 'POST');
+  const raw = await oauth.post({});
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
 
-const PORT = process.env.PORT || 3000;
+api.put('/:recordtype/:id', wrapAsync(async (req, res) => {
+  const { recordtype, id } = req.params;
+  const url = `${BASE_URL}?script=${SCRIPT}&deploy=${DEPLOY}&put=1&recordtype=${recordtype}&id=${id}`;
+  const oauth = createOAuth(url, 'POST');
+  const raw = await oauth.post(req.body);
+  res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}));
+
+// Montar rutas
+app.use('/api/v2/se', api);
+
+// Handler 404
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
+
+// Iniciar servidor
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
