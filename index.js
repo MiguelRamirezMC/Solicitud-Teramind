@@ -19,7 +19,7 @@ if (missing.length) {
   process.exit(1);
 }
 
-// Desestructurar variables
+// Desestructurar variables de entorno
 const {
   ACCOUNT,
   SCRIPT,
@@ -27,14 +27,16 @@ const {
   CONSUMERKEY,
   CONSUMER_SECRET,
   TOKEN_ID,
-  TOKEN_SECRET,
-  PORT = 3000
+  TOKEN_SECRET
 } = process.env;
+
+// Puerto dinámico asignado por Railway o 3000 por defecto (solo en local)
+const PORT = process.env.PORT || 3000;
 
 const BASE_URL = `https://${ACCOUNT}.restlets.api.netsuite.com/app/site/hosting/restlet.nl`;
 
 // Helper para instanciar OAuth
-function createOAuth(url, method) {
+ function createOAuth(url, method) {
   return new NetSuiteOauth(
     url,
     method,
@@ -63,7 +65,7 @@ app.use(express.json());
 app.use(cors({ origin: true }));
 
 // Ruta de salud
-app.get('/', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Rutas de API
 const api = express.Router();
@@ -126,11 +128,11 @@ api.put('/:recordtype/:id', wrapAsync(async (req, res) => {
   res.json(typeof raw === 'string' ? JSON.parse(raw) : raw);
 }));
 
-// Montar rutas
+// Montar rutas bajo /api/v2/se
 app.use('/api/v2/se', api);
 
 // Handler 404
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
-// Iniciar servidor
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Iniciar servidor en todas las interfaces para Railway
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
